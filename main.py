@@ -1,7 +1,7 @@
 import argparse
 
 from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, DEFAULT_SERVER
-from src import client
+from src.client import Client
 from src.server import Server
 
 
@@ -27,4 +27,6 @@ if __name__ == "__main__":
         server = Server(ns.addr, ns.port)
         server.main()
     elif ns.type == "client":
-        client.main(ns)
+        # client.main(ns)
+        client = Client(ns.addr, ns.port, ns.name)
+        client.main()
