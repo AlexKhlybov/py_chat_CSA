@@ -1,6 +1,6 @@
 import logging
 
-from settings.variables import ENCODING, LOG_FILENAME, LOGGER_NAME
+from common.variables import ENCODING, LOG_FILENAME, LOGGER_NAME
 
 FILE_LOG_LVL = logging.INFO
 

@@ -2,8 +2,8 @@ import argparse
 import socket
 import unittest
 
-from settings.utils import get_message, send_message
-from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, RESPONSE
+from common.utils import get_message, send_message
+from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, RESPONSE
 from src import client
 
 

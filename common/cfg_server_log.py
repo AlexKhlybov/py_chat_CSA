@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
-from settings.variables import ENCODING, LOG_FILENAME, LOGGER_NAME, WHEN_INTERVAL
+from common.variables import ENCODING, LOG_FILENAME, LOGGER_NAME, WHEN_INTERVAL
 
 FILE_LOG_LVL = logging.INFO
 
