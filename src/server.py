@@ -60,8 +60,6 @@ class Server:
     def private_msg(self, msg):
         """Отправляем личное сообщение"""
         if not self.nicknames.count(msg["to"]) == 0:
-            print(self.nicknames)
-            print(self.clients)
             for nick in self.nicknames:
                 if nick == msg["to"]:
                     client = self.clients[self.nicknames.index(nick)]
