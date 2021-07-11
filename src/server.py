@@ -17,14 +17,8 @@ class Server:
         self.port = port
         self.clients = []
         self.nicknames = []
-        self.rooms = [
-            {
-                "room_name": "#all",
-                "clients": self.clients,
-                "nicknames": self.nicknames
-            }
-        ]
-    
+        self.rooms = [{"room_name": "#all", "clients": self.clients, "nicknames": self.nicknames}]
+
     def read_requests(self, r_clients):
         """Чтение запросов из списка клиентов"""
         responses = {}  # Словарь ответов сервера вида {сокет: запрос}
@@ -103,7 +97,10 @@ class Server:
                         for client in room["clients"]:
                             # send_message(client, get_101(NICKNAMES[CLIENTS.index(client)]))
                             send_message(
-                                client, action_msg(f"<{msg['from']}>: {msg['message']}", self.nicknames[self.clients.index(client)])
+                                client,
+                                action_msg(
+                                    f"<{msg['from']}>: {msg['message']}", self.nicknames[self.clients.index(client)]
+                                ),
                             )
                     else:
                         send_message(
@@ -195,10 +192,12 @@ def parse_args():
     parser.add_argument("-a", "--addr", type=str, default=DEFAULT_IP_ADDRESS)
     return parser
 
+
 def run():
     args = parse_args()
     server = Server(args.addr, args.port)
     server.main()
+
 
 if __name__ == "__main__":
     run()

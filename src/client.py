@@ -1,8 +1,8 @@
 import argparse
 import sys
-from time import sleep
-from socket import AF_INET, AddressFamily, SOCK_STREAM, socket
+from socket import AF_INET, SOCK_STREAM, socket
 from threading import Thread
+from time import sleep
 
 from settings.cfg_client_log import logger
 from settings.messages import action_auth, action_join, action_leave, action_msg, action_presence, action_quit
@@ -13,21 +13,20 @@ from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, RESPONS
 class Client:
     def __init__(self, addr, port, name):
         self.addr = addr
-        self.port = port 
+        self.port = port
         self.nickname = name.capitalize() if name else name
         self.sock = ""
         self.actions = {
             "q": "Выход",
             "s": "Отправить сообщение ПОЛЬЗОВАТЕЛЮ",
             "g": "Отправить сообщение ГРУППЕ",
-            "wg": "Вступить в ГРУППУ"
+            "wg": "Вступить в ГРУППУ",
         }
 
     @property
     def help_info(self):
         print(INDENT)
-        return '\n'.join(
-            [f'{key} - {action}' for key, action in self.actions.items()])
+        return "\n".join([f"{key} - {action}" for key, action in self.actions.items()])
 
     def parsing_action(self, message):
         """Разбирает сообщения от клиентов"""
@@ -127,6 +126,7 @@ def parse_args():
     parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
     parser.add_argument("name", nargs="?", type=int, default=None)
     return parser
+
 
 def run():
     args = parse_args()
