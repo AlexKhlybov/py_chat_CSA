@@ -1,5 +1,6 @@
 import argparse
 import sys
+from time import sleep
 from socket import AF_INET, AddressFamily, SOCK_STREAM, socket
 from threading import Thread
 
@@ -13,8 +14,20 @@ class Client:
     def __init__(self, addr, port, name):
         self.addr = addr
         self.port = port 
-        self.nickname = name.capitalize()
+        self.nickname = name.capitalize() if name else name
         self.sock = ""
+        self.actions = {
+            "q": "Выход",
+            "s": "Отправить сообщение ПОЛЬЗОВАТЕЛЮ",
+            "g": "Отправить сообщение ГРУППЕ",
+            "wg": "Вступить в ГРУППУ"
+        }
+
+    @property
+    def help_info(self):
+        print(INDENT)
+        return '\n'.join(
+            [f'{key} - {action}' for key, action in self.actions.items()])
 
     def parsing_action(self, message):
         """Разбирает сообщения от клиентов"""
@@ -58,26 +71,25 @@ class Client:
                 break
 
     def write(self):
+        print(self.help_info)
         while True:
-            start = input("")
-            if start == "h":
-                command = input(
-                    f"Выберите действие: \n"
-                    f"s - отправить сообщение ПОЛЬЗОВАТЕЛЮ,\n"
-                    f"g - отправть сообщение ГРУППЕ,\n"
-                    f"wg - вступить в группу\n"
-                )
-                if command == "s":
-                    to_name = input(f"Введите ник, кому вы хотели бы отправить сообщение: \n").capitalize()
-                    msg = input(f"Введите сообщение пользователю {to_name}: ")
-                    send_message(self.sock, action_msg(self.nickname, msg, to_name))
-                elif command == "g":
-                    to_room = "#" + input("Введите название группы, кому вы хотели бы отправить сообщение: ").capitalize()
-                    msg = input(f"Введите сообщение группе {to_room}: ")
-                    send_message(self.sock, action_msg(self.nickname, msg, to_room))
-                elif command == "wg":
-                    join_room = "#" + input("К какой группе вы хотите присоединица?: \n").capitalize()
-                    send_message(self.sock, action_join(self.nickname, join_room))
+            command = input(f"Выберите действие (для справки введите - h): \n")
+            if command == "h":
+                print(self.help_info)
+            if command == "s":
+                to_name = input(f"Введите ник, кому вы хотели бы отправить сообщение: \n").capitalize()
+                msg = input(f"Введите сообщение пользователю {to_name}: ")
+                send_message(self.sock, action_msg(self.nickname, msg, to_name))
+            elif command == "g":
+                to_room = "#" + input("Введите название группы, кому вы хотели бы отправить сообщение: ").capitalize()
+                msg = input(f"Введите сообщение группе {to_room}: ")
+                send_message(self.sock, action_msg(self.nickname, msg, to_room))
+            elif command == "wg":
+                join_room = "#" + input("К какой группе вы хотите присоединица?: \n").capitalize()
+                send_message(self.sock, action_join(self.nickname, join_room))
+            elif command == "q":
+                self.sock.close()
+                break
             else:
                 print(f"Для вывода списка комманд, наберите - 'h'")
 
@@ -104,6 +116,7 @@ class Client:
             else:
                 receive_thread = Thread(target=self.receive)
                 receive_thread.start()
+                sleep(5)
                 write_thread = Thread(target=self.write)
                 write_thread.start()
 
