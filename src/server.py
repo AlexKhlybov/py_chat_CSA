@@ -5,10 +5,10 @@ from re import match
 from socket import AF_INET, SOCK_STREAM, socket
 from time import sleep
 
-from settings.cfg_server_log import logger
-from settings.response import action_msg, action_probe, get_101, get_102, get_201, get_401, get_404
-from settings.utils import get_message, log, send_message
-from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, MAX_CONNECTIONS, TIMEOUT, WAIT
+from common.cfg_server_log import logger
+from common.response import action_msg, action_probe, get_101, get_102, get_201, get_401, get_404
+from common.utils import get_message, log, send_message
+from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, MAX_CONNECTIONS, TIMEOUT, WAIT
 
 
 class Server:

@@ -4,10 +4,10 @@ from socket import AF_INET, SOCK_STREAM, socket
 from threading import Thread
 from time import sleep
 
-from settings.cfg_client_log import logger
-from settings.messages import action_auth, action_join, action_leave, action_msg, action_presence, action_quit
-from settings.utils import get_message, log, send_message
-from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, RESPONSE
+from common.cfg_client_log import logger
+from common.messages import action_auth, action_join, action_leave, action_msg, action_presence, action_quit
+from common.utils import get_message, log, send_message
+from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, RESPONSE
 
 
 class Client:

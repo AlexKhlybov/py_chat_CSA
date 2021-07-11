@@ -1,6 +1,6 @@
 import argparse
 
-from settings.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, DEFAULT_SERVER
+from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, DEFAULT_SERVER
 from src.client import Client
 from src.server import Server
 

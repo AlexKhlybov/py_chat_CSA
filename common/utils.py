@@ -2,7 +2,7 @@ import inspect
 import logging
 from pickle import dumps, loads
 
-from settings.variables import BUFFER_SIZE, ENCODING, LOG_FILENAME
+from common.variables import BUFFER_SIZE, ENCODING, LOG_FILENAME
 
 
 def get_message(sock):
