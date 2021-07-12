@@ -1,137 +1,174 @@
 import argparse
-import sys
-from socket import AF_INET, SOCK_STREAM, socket
+import logging
+import random
+from socket import *
 from threading import Thread
-from time import sleep
+from logs import cfg_client_log as log_config
+from common.decorators import *
+from common.descriptors import Port, Addr
+from common.codes import *
+from common.request_body import *
+from common.utils import *
 
-from common.cfg_client_log import logger
-from common.messages import action_auth, action_join, action_leave, action_msg, action_presence, action_quit
-from common.utils import get_message, log, send_message
-from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, RESPONSE
+
+
+class ClientThread(Thread):
+    __slots__ = ('func', 'logger')
+
+    def __init__(self, func, logger):
+        super().__init__()
+        self.func = func
+        self.logger = logger
+        self.daemon = True
+
+    @try_except_wrapper
+    def run(self):
+        self.func()
+
+
+def print_help():
+    txt = '=================HELPER===================\n' \
+          '--------Commands-------------------\n' \
+          '!<command> - execute local(client) command\n' \
+          '$<command> <args> - send command to server\n\n' \
+          '--------MSG to Client--------------\n' \
+          '@<username> - message to <username>\n\n' \
+          '--------MSG to Chat--------------\n' \
+          '#<roomname> - message to <roomname>\n' \
+          '+#<roomname> - join the group\n' \
+          '-#<roomname> - leave the group\n\n' \
+          'q - quit\n'
+    print(txt)
 
 
 class Client:
-    def __init__(self, addr, port, name):
+    __slots__ = ('_addr', '_port', 'logger', 'socket', 'connected', 'listener', 'sender')
+
+    TCP = (AF_INET, SOCK_STREAM)
+    USER = User(f'Test{random.randint(0, 1000)}')
+    addr = Addr('_addr')
+    port = Port('_port')
+  
+
+    def __init__(self, addr, port):
+        self.logger = logging.getLogger(log_config.LOGGER_NAME)
         self.addr = addr
         self.port = port
-        self.nickname = name.capitalize() if name else name
-        self.sock = ""
-        self.actions = {
-            "q": "Выход",
-            "s": "Отправить сообщение ПОЛЬЗОВАТЕЛЮ",
-            "g": "Отправить сообщение ГРУППЕ",
-            "wg": "Вступить в ГРУППУ",
-        }
+        self.connected = False
 
-    @property
-    def help_info(self):
-        print(INDENT)
-        return "\n".join([f"{key} - {action}" for key, action in self.actions.items()])
+    def start(self):
+        self.socket = socket(*self.TCP)
+        start_txt = f'Connect to {self.addr}:{self.port} as {self.USER}...'
+        self.logger.debug(start_txt)
+        print(start_txt)
+        self.__connect()
 
-    def parsing_action(self, message):
-        """Разбирает сообщения от клиентов"""
-        try:
-            if message["action"] == "probe":
-                send_message(self.sock, action_presence(self.nickname))
-            else:
-                print(message["message"])
-        except:
-            logger.critical("An error occurred!")
-            self.sock.close()
+    @try_except_wrapper
+    def __connect(self):
+        self.socket.connect((self.addr, self.port))
+        self.connected = True
+        print('Done')
+        print_help()
+        response = self.presence()
+        if response.code != OK:
+            self.logger.warning(response)
+            return
 
-    def parsing_response(self, message):
-        """Разбирает ответы от сервера"""
-        code = message["response"]
-        alert = message["alert"]
-        try:
-            print(f"{message['alert']}")
-            if code == 101 or code == 102 or code == 200 or code == 202:
-                logger.info((f"{code} - {alert}"))
-            elif code == 400 or code == 401 or code == 402 or code == 404 or code == 409:
-                logger.error((f"{code} - {alert}"))
-            else:
-                logger.critical((f"{code} - {alert}"))
-        except:
-            logger.critical("An error occurred!")
-            self.sock.close()
+        self.listener = ClientThread(self.__listen_server, self.logger)
+        self.listener.start()
+        self.send_msg()
 
-    def receive(self):
-        while True:
-            try:
-                message = get_message(self.sock)
-                for key in message.keys():
-                    if key == "action":
-                        self.parsing_action(message)
-                    elif key == "response":
-                        self.parsing_response(message)
-            except:
-                logger.critical("An error occurred!")
-                self.sock.close()
+    @try_except_wrapper
+    def __send_request(self, request):
+        if not self.connected:
+            return
+        self.logger.debug(request)
+        send_data(self.socket, request)
+
+    @try_except_wrapper
+    def __get_response(self):
+        if not self.connected:
+            return
+        response = get_data(self.socket)
+        self.logger.debug(response)
+        return response
+
+    def presence(self):
+        request = Request(RequestAction.PRESENCE, self.USER)
+        self.__send_request(request)
+        return self.__get_response()
+
+    def send_msg(self):
+        while self.connected:
+            msg = input('Enter message:\n')
+            if msg.upper() == 'Q':
                 break
-
-    def write(self):
-        print(self.help_info)
-        while True:
-            command = input(f"Выберите действие (для справки введите - h): \n")
-            if command == "h":
-                print(self.help_info)
-            if command == "s":
-                to_name = input(f"Введите ник, кому вы хотели бы отправить сообщение: \n").capitalize()
-                msg = input(f"Введите сообщение пользователю {to_name}: ")
-                send_message(self.sock, action_msg(self.nickname, msg, to_name))
-            elif command == "g":
-                to_room = "#" + input("Введите название группы, кому вы хотели бы отправить сообщение: ").capitalize()
-                msg = input(f"Введите сообщение группе {to_room}: ")
-                send_message(self.sock, action_msg(self.nickname, msg, to_room))
-            elif command == "wg":
-                join_room = "#" + input("К какой группе вы хотите присоединица?: \n").capitalize()
-                send_message(self.sock, action_join(self.nickname, join_room))
-            elif command == "q":
-                self.sock.close()
-                break
+            elif msg[0] == '!':
+                self.__execute_local_command(msg[1:])
+                continue
+            elif msg[0] == '$':
+                request = Request(RequestAction.COMMAND, msg[1:])
+            elif msg[0] == '+':
+                request = Request(RequestAction.JOIN, msg[1:])
+            elif msg[0] == '-':
+                request = Request(RequestAction.LEAVE, msg[1:])
             else:
-                print(f"Для вывода списка комманд, наберите - 'h'")
+                msg = Msg(msg, self.USER)
+                msg.parse_msg()
+                request = Request(RequestAction.MESSAGE, msg)
+            print(request)
+            # self.__send_request(request)
 
-    def main(self):
-        """Основной скрипт работы клиента"""
-        if not self.nickname:
-            print(self.nickname)
-            self.nickname = input("Choose your nickname: ").capitalize()
-        try:
-            if not 1024 <= self.port <= 65535:
-                raise ValueError
-            logger.info(f"Connected to remote host - {self.addr}:{self.port} ")
-        except ValueError:
-            logger.critical("The port must be in the range 1024-6535")
-            sys.exit(1)
+    def __execute_local_command(self, command):
+        if command == 'help':
+            print_help()
+        elif command == 'set_name':
+            name = input('Set new name')
+            self.USER.username = name
+            self.__send_request(Request(RequestAction.PRESENCE, self.USER))
+        elif command == 'reconnect':
+            self.start()
         else:
-            self.sock = socket(AF_INET, SOCK_STREAM)
-            try:
-                self.sock.connect((self.addr, self.port))
-            except:
-                print(f"Unable to connect")
-                logger.critical("Unable to connect")
-                sys.exit()
+            print('Command not found')
+
+    def __listen_server(self):
+        while self.connected:
+            resp = get_data(self.socket)
+            self.logger.debug(resp)
+            if resp.type != RESPONSE:
+                self.logger.warning(f'Received not RESPONSE:\n {resp}')
+                continue
+            if resp.code == 101:
+                print(f'server: {resp.message}')
             else:
-                receive_thread = Thread(target=self.receive)
-                receive_thread.start()
-                sleep(5)
-                write_thread = Thread(target=self.write)
-                write_thread.start()
+                print(resp.message)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('addr', default='127.0.0.1', type=str, nargs='?', help='Server address [default=localhost]')
+    parser.add_argument('port', default=7777, type=int, nargs='?', help='Server port [default=7777]')
+
+    args = parser.parse_args()
+
+    addr = args.addr
+    port = args.port
+
+    client = Client(addr, port)
+    client.start()
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("addr", nargs="?", type=str, default=DEFAULT_IP_ADDRESS)
-    parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
-    parser.add_argument("name", nargs="?", type=int, default=None)
+    parser.add_argument("addr", nargs="?", type=str, default=DEFAULT_IP_ADDRESS, help='Server address [default=localhost]')
+    parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT, help='Server port [default=7777]')
     return parser
 
 
 def run():
     args = parse_args()
-    client = Client(args.addr, args.port, args.name)
-    client.main()
+    client = Client(args.addr, args.port)
+    client.start()
 
 
 if __name__ == "__main__":

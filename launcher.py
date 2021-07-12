@@ -43,9 +43,9 @@ class Launcher:
 
     def run(self):
         self.close()
-        self.server = subprocess.Popen("python3 main.py -t server -p 5001", shell=True)
+        self.server = subprocess.Popen("python3 manage.py -t server -p 5001", shell=True)
         for i in range(self.num):
-            self.clients.append(subprocess.Popen(f"python3 main.py -t client -p 5001 -n test{i}", shell=True))
+            self.clients.append(subprocess.Popen(f"python3 manage.py -t client -p 5001", shell=True))
 
     def close(self):
         while self.clients:

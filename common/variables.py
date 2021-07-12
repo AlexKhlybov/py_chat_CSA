@@ -17,31 +17,31 @@ WAIT = 10
 DEFAULT_SERVER = "server"
 
 
-# Протокол JIM основные ключи
-ACTION = "message"
-TIME = "time"
-USER = "Dave"
-
-
-# Прочие ключи используемые в протоколе
-PRESENCE = "presence"
-RESPONSE = "response"
-ERROR = "error"
-RESPONSE_DEFAULT_IP_ADDRESS = "response_default_ip_address"
-
-
-# Ключи используемые в протоколе логирования
-ROOT = os.getcwd()
-DIR_LOG = "logs"
-
-LOG_DIRECTORY = os.path.join(ROOT, DIR_LOG)
-LOG_FILENAME = os.path.join(LOG_DIRECTORY, "app.log")
-
-LOGGER_NAME = "app." + __name__
-
-BACKUP_COUNT = 5
-WHEN_INTERVAL = "D"
-
-
 # Красивости
 INDENT = 30 * "-"
+
+
+TYPE = 'type'
+REQUEST = 'request'
+RESPONSE = 'response'
+
+ACTION = 'action'
+TIME = 'time'
+BODY = 'body'
+CODE = 'code'
+MESSAGE = 'message'
+USERNAME = 'username'
+ROOMNAME = 'roomname'
+SUBSCRIBERS = 'subscribers'
+SENDER = 'sender'
+TO = 'to'
+TEXT = 'text'
+
+
+class RequestAction:
+    PRESENCE = 'presence'
+    MESSAGE = 'msg'
+    QUIT = 'quit'
+    JOIN = 'join'
+    LEAVE = 'leave'
+    COMMAND = 'command'
