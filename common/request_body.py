@@ -32,7 +32,7 @@ class User(BaseBody):
 class Room(BaseBody):
     __slots__=(ROOMNAME, SUBSCRIBERS)
 
-    def __init__(self, roomname, subscribers=dict()):
+    def __init__(self, roomname, subscribers):
         self.roomname = roomname
         self.subscribers = subscribers
 
@@ -40,14 +40,14 @@ class Room(BaseBody):
         return self.subscribers
 
     def __str__(self):
-        return self.roomname
+        return f'{self.roomname} >>>>> {self.subscribers}'
 
 
 class Msg(BaseBody):
     __slots__ = (SENDER, TO, TEXT)
 
     PATTERN_USER = r'@(?P<to>[\w\d]*)?(?P<message>.*)'
-    PATTERN_GROUP = r'#(?P<to>[\w\d]*)?(?P<message>.*)'
+    
 
     def __init__(self, text, sender, to='ALL'):
         self.text = text
@@ -67,7 +67,30 @@ class Msg(BaseBody):
             match = re.match(self.PATTERN_USER, msg)
             to = match.group(TO)
             msg = match.group(MESSAGE)
-        elif '#' in msg:
+        # elif '#' in msg:
+        #     match = re.match(self.PATTERN_GROUP, msg)
+        #     to = '#' + match.group(TO)
+        #     msg = match.group(MESSAGE)
+
+        self.to = to
+        self.text = msg
+
+    def __str__(self):
+        return f'{self.sender} to @{self.to}: {self.text}'
+
+
+class MsgRoom(Msg):
+
+    PATTERN_GROUP = r'#(?P<to>[\w\d]*)?(?P<message>.*)'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def parse_msg(self):
+        to = ''
+        msg = self.text
+
+        if '#' in msg:
             match = re.match(self.PATTERN_GROUP, msg)
             to = '#' + match.group(TO)
             msg = match.group(MESSAGE)
@@ -76,5 +99,7 @@ class Msg(BaseBody):
         self.text = msg
 
     def __str__(self):
-        return f'{self.sender} to @{self.to}: {self.text}'
+        return f'{self.sender} to {self.to}: {self.text}'
+
+    
     

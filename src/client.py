@@ -113,11 +113,14 @@ class Client:
             elif msg[0] == '-':
                 request = Request(RequestAction.LEAVE, msg[1:])
             else:
-                msg = Msg(msg, self.USER)
+                if not msg[0] == '#':
+                    msg = Msg(msg, self.USER)
+                else:
+                    msg = MsgRoom(msg, self.USER)
                 msg.parse_msg()
                 request = Request(RequestAction.MESSAGE, msg)
-            print(request)
-            # self.__send_request(request)
+                # TODO print(request)
+            self.__send_request(request)
 
     def __execute_local_command(self, command):
         if command == 'help':

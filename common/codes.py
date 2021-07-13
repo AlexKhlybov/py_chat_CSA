@@ -26,6 +26,7 @@ OK = Code(200, 'OK')
 CREATED = Code(201, 'Connected created')
 # 4xx
 INCORRECT_REQUEST = Code(400, 'Incorrect request / json')
+ACCESS = Code(401, 'You are not connected to this chat!')
 NOT_FOUND = Code(404, 'User / chat is missing on the server')
 CONFLICT = Code(409, 'User already connected')
 # 5xx

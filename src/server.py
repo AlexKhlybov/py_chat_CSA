@@ -1,6 +1,8 @@
 import re
 import argparse
 import logging
+from time import sleep
+from icecream import ic
 from socket import *
 from select import select
 from threading import Thread
@@ -8,8 +10,9 @@ import logs.cfg_server_log as log_config
 from common.decorators import try_except_wrapper
 from common.descriptors import Port
 from common.codes import *
-from common.request_body import Msg, Room
+from common.request_body import Msg, MsgRoom, Room
 from common.utils import *
+from common.metacls import ServerVerifier
 
 
 class ServerThread(Thread):
@@ -26,8 +29,8 @@ class ServerThread(Thread):
         self.func()
 
 
-class Server:
-    __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener')
+class Server():
+    __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener', 'subscribers')
 
     TCP = (AF_INET, SOCK_STREAM)
     TIMEOUT = 5
@@ -39,6 +42,7 @@ class Server:
         self.port = port
         self.clients = []
         self.users = {}
+        self.subscribers = {}
         self.rooms = {}
 
     def start(self, request_count=5):
@@ -62,7 +66,6 @@ class Server:
             command, *args = msg.split(' ')
             if command in self.commands:
                 res = self.commands[command](*args)
-                print(res)
 
     def __listen(self):
         self.logger.info('Start listen')
@@ -128,32 +131,50 @@ class Server:
                 self.__client_disconnect(client)
 
             elif i_req.action == RequestAction.MESSAGE:
-                msg = Msg.from_dict(i_req.body)
-                if msg.to.upper() != 'ALL' and msg.to in self.users:
-                    self.__send_to_client(self.users[msg.to], Response(BASIC, str(msg)))
-                elif re.match('#', msg.to.upper):
+                if not re.match(r'#', i_req.body['to']):
+                    msg = Msg.from_dict(i_req.body)
+                    if msg.to.upper() != 'ALL' and msg.to in self.users:
+                        self.__send_to_client(self.users[msg.to], Response(BASIC, str(msg)))
+                    else:
+                        self.__send_to_all(other_clients, Response(BASIC, str(msg)))
+                else:
+                    msg = MsgRoom.from_dict(i_req.body)
                     if msg.to in self.rooms:
-                        pass
+                        room = self.rooms[msg.to]
+                        room_clients = [v for k, v in room.get_dict().items() if k != msg.sender]
+                        if len(room_clients):
+                            if msg.sender in room.get_dict():
+                                self.__send_to_all(room_clients, Response(BASIC, str(msg)))
+                            else:
+                                self.__send_to_client(self.users[msg.sender], Response(ACCESS))
                     else:
                         self.__send_to_client(self.users[msg.sender], Response(NOT_FOUND))
-                        self.rooms[msg.to] = Room(msg.to, subscribers={msg.sender: self.users[msg.sender]})
+                        subscribers = {}
+                        subscribers[msg.sender] = self.users[msg.sender]
+                        self.rooms[msg.to] = Room(msg.to, subscribers)
+                        sleep(0.5)
                         self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Chat {msg.to} created!'))
+                        sleep(0.5)
                         self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Now you can send a message to the chat {msg.to}'))
-
-                else:
-                    self.__send_to_all(other_clients, Response(BASIC, str(msg)))
-            
+                
             elif i_req.action == RequestAction.JOIN:
-                pass
+                user = [k for k, v in self.users.items() if v == client]
+                room = self.rooms[i_req.body]
+                room.get_dict()[user[0]] = client
+                room_clients = [v for k, v in room.get_dict().items() if k != user[0]]
+                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} JOINED to chat - {i_req.body}!'))
 
             elif i_req.action == RequestAction.LEAVE:
-                pass
+                user = [k for k, v in self.users.items() if v == client]
+                room = self.rooms[i_req.body]
+                room.get_dict().pop(user[0])
+                room_clients = room.get_dict().values()
+                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} LEFT chat!'))
 
             elif i_req.action == RequestAction.COMMAND:
                 command, *args = i_req.body.split()
                 user = [u for u, c in self.users.items() if c == client].pop()
                 args.insert(0, user)
-                # o_resp = Response(ANSWER, self.__execute_command(command, *args))
                 o_resp = self.__execute_command(command, *args)
                 self.__send_to_client(client, o_resp)
             else:
