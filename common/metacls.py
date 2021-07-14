@@ -29,7 +29,7 @@ def disassemble(clsdict, black_list):
 
 
 class ClientVerifier(type):
-    black_list = ['connect']
+    black_list = ['accept', 'listen']
 
     def __init__(cls, clsname, bases, clsdict):
         disassemble(clsdict, cls.black_list)
@@ -38,7 +38,8 @@ class ClientVerifier(type):
 
 
 class ServerVerifier(type):
-    black_list = ['accept', 'listen']
+    black_list = ['connect']
+
 
     def __init__(cls, clsname, bases, clsdict):
         disassemble(clsdict, cls.black_list)
