@@ -30,7 +30,6 @@ class ServerThread(Thread):
 
 
 class Server(metaclass=ServerVerifier):
-# class Server():
     __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener', 'subscribers')
 
     TCP = (AF_INET, SOCK_STREAM)
