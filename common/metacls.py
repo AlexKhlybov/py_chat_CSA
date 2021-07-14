@@ -1,6 +1,7 @@
 import pdb
 import types
 import dis
+from icecream import ic
 
 
 def disassemble(clsdict, black_list):
@@ -33,6 +34,7 @@ class ClientVerifier(type):
     def __init__(cls, clsname, bases, clsdict):
         disassemble(clsdict, cls.black_list)
         super().__init__(clsname, bases, clsdict)
+
 
 
 class ServerVerifier(type):

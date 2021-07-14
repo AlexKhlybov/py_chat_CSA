@@ -9,7 +9,7 @@ from common.descriptors import Port, Addr
 from common.codes import *
 from common.request_body import *
 from common.utils import *
-
+from common.metacls import ClientVerifier
 
 
 class ClientThread(Thread):
@@ -41,7 +41,7 @@ def print_help():
     print(txt)
 
 
-class Client:
+class Client(metaclass=ClientVerifier):
     __slots__ = ('_addr', '_port', 'logger', 'socket', 'connected', 'listener', 'sender')
 
     TCP = (AF_INET, SOCK_STREAM)
@@ -119,7 +119,6 @@ class Client:
                     msg = MsgRoom(msg, self.USER)
                 msg.parse_msg()
                 request = Request(RequestAction.MESSAGE, msg)
-                # TODO print(request)
             self.__send_request(request)
 
     def __execute_local_command(self, command):
