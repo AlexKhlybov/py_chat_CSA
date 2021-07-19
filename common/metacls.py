@@ -27,6 +27,16 @@ def disassemble(clsdict, black_list):
                     raise TypeError('Call method of socket from black list')
     pass
 
+class Singleton(type):
+
+    def __init__(cls, *args, **kwargs):
+        super(Singleton, cls).__init__(*args, **kwargs)
+        cls.instance = None
+
+    def __call__(cls, *args, **kwargs):
+        if cls.instance is None:
+            cls.instance = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls.instance
 
 class ClientVerifier(type):
     black_list = ['accept', 'listen']
@@ -39,7 +49,6 @@ class ClientVerifier(type):
 
 class ServerVerifier(type):
     black_list = ['connect']
-
 
     def __init__(cls, clsname, bases, clsdict):
         disassemble(clsdict, cls.black_list)
