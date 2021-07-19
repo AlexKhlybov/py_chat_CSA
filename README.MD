@@ -8,3 +8,28 @@
 
 ## What is this?
 A server-side chat a **PyChatCSA** client in Python written as part of training at GeekBrains.
+
+## Getting started
+clone:
+```
+$ git clone https://github.com/AlexKhlybov/py_chat_CSA.git
+$ cd py_chat_CSA
+```
+create & activate virtual env then install dependency
+
+with venv/virtualenv + pip:
+```
+$ python3 -m venv env
+$ source env/bin/activate  # use `env\Scripts\activate` on Windows
+$ pip install -r requirements.txt
+```
+
+To run the program, type in the console:
+Server:
+```
+$ python3 -t server
+```
+Client:
+```
+$ python3 -t client
+```
