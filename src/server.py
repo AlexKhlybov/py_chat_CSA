@@ -13,6 +13,7 @@ from common.codes import *
 from common.request_body import Msg, MsgRoom, Room
 from common.utils import *
 from common.metacls import ServerVerifier
+from database.server_db import ServerStorage
 
 
 class ServerThread(Thread):
@@ -30,7 +31,7 @@ class ServerThread(Thread):
 
 
 class Server(metaclass=ServerVerifier):
-    __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener', 'subscribers')
+    __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener', 'subscribers', 'storage')
 
     TCP = (AF_INET, SOCK_STREAM)
     TIMEOUT = 5
@@ -44,6 +45,7 @@ class Server(metaclass=ServerVerifier):
         self.users = {}
         self.subscribers = {}
         self.rooms = {}
+        self.storage = ServerStorage()
 
     def start(self, request_count=5):
         self.socket = socket(*self.TCP)
@@ -107,6 +109,7 @@ class Server(metaclass=ServerVerifier):
                         self.clients.remove(client)
                     else:
                         self.users[request.body] = client
+                        self.storage.login_user(request.body, client.getpeername()[0])
                 elif request.action == RequestAction.QUIT:
                     self.__client_disconnect(client)
             except (ConnectionError, ValueError):
@@ -199,6 +202,7 @@ class Server(metaclass=ServerVerifier):
         self.clients.remove(client)
         disconnected_user = [u for u, c in self.users.items() if c == client].pop()
         self.users.pop(disconnected_user)
+        self.storage.logout_user(disconnected_user)
         disconnection_response = Response(BASIC, f'{disconnected_user} disconnected')
         for cl in self.clients:
             send_data(cl, disconnection_response)
