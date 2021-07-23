@@ -1,200 +1,233 @@
+import re
 import argparse
-import select
-import sys
-from re import match
-from socket import AF_INET, SOCK_STREAM, socket
+import logging
 from time import sleep
+from icecream import ic
+from socket import *
+from select import select
+from threading import Thread
+import logs.cfg_server_log as log_config
+from common.decorators import try_except_wrapper
+from common.descriptors import Port
+from common.codes import *
+from common.request_body import Msg, MsgRoom, Room
+from common.utils import *
+from common.metacls import ServerVerifier
 
-from common.cfg_server_log import logger
-from common.response import action_msg, action_probe, get_101, get_102, get_201, get_401, get_404
-from common.utils import get_message, log, send_message
-from common.variables import DEFAULT_IP_ADDRESS, DEFAULT_PORT, INDENT, MAX_CONNECTIONS, TIMEOUT, WAIT
+
+class ServerThread(Thread):
+    __slots__ = ('func', 'logger')
+
+    def __init__(self, func, logger):
+        super().__init__()
+        self.func = func
+        self.logger = logger
+        self.daemon = True
+
+    @try_except_wrapper
+    def run(self):
+        self.func()
 
 
-class Server:
-    def __init__(self, addr, port) -> None:
-        self.addr = addr
+class Server(metaclass=ServerVerifier):
+    __slots__ = ('bind_addr', '_port', 'logger', 'socket', 'clients', 'users', 'rooms', 'commands', 'listener', 'subscribers')
+
+    TCP = (AF_INET, SOCK_STREAM)
+    TIMEOUT = 5
+    port = Port('_port')
+
+    def __init__(self, bind_addr, port):
+        self.logger = logging.getLogger(log_config.LOGGER_NAME)
+        self.bind_addr = bind_addr
         self.port = port
         self.clients = []
-        self.nicknames = []
-        self.rooms = [{"room_name": "#all", "clients": self.clients, "nicknames": self.nicknames}]
+        self.users = {}
+        self.subscribers = {}
+        self.rooms = {}
 
-    def read_requests(self, r_clients):
-        """Чтение запросов из списка клиентов"""
-        responses = {}  # Словарь ответов сервера вида {сокет: запрос}
-        for sock in r_clients:
+    def start(self, request_count=5):
+        self.socket = socket(*self.TCP)
+        self.socket.settimeout(0.5)
+        self.socket.bind((self.bind_addr, self.port))
+        self.logger.info(f'Config server port - {self.port}| Bind address - {self.bind_addr}')
+        self.socket.listen(request_count)
+        self.listener = ServerThread(self.__listen, self.logger)
+        self.listener.start()
+        self.__console()
+
+    def __console(self):
+        while True:
+            msg = input('Enter command:\n')
+            if msg.upper() == 'Q':
+                break
+            if msg[0] == '#':
+                msg = msg[1:]
+
+            command, *args = msg.split(' ')
+            if command in self.commands:
+                res = self.commands[command](*args)
+
+    def __listen(self):
+        self.logger.info('Start listen')
+        while True:
             try:
-                data = get_message(sock)
-                responses[sock] = data
-            except:
-                print(f"Client {sock.fileno()} {sock.getpeername()} DISCONNECTED")
-                logger.info(f"Client {sock.fileno()} {sock.getpeername()} DISCONNECTED")
-                self.clients.remove(sock)
-        return responses
-
-    def parsing_requests(self, requests):
-        """Разбираем клиентское сообщение"""
-        for request in requests.values():
-            if request["action"] == "msg":
-                if match(r"#", request["to"]):
-                    self.room_msg(request)
-                else:
-                    self.private_msg(request)
-            elif request["action"] == "join":
-                room = self.get_room(request["room"])
-                client = self.clients[self.nicknames.index(request["from"])]
-                if room == False:
-                    room = self.get_new_room(request["room"])
-                    room["clients"].append(client)
-                    room["nicknames"].append(request["from"])
-                    send_message(client, get_404())
-                    sleep(0.5)
-                    send_message(client, get_201(request["room"]))
-                    sleep(0.5)
-                    send_message(client, get_102(f"Вы подключились к чату {request['room']}"))
-                else:
-                    room["clients"].append(client)
-                    room["nicknames"].append(request["from"])
-                    self.room_msg(request)
-
-    def private_msg(self, msg):
-        """Отправляем личное сообщение"""
-        if not self.nicknames.count(msg["to"]) == 0:
-            for nick in self.nicknames:
-                if nick == msg["to"]:
-                    client = self.clients[self.nicknames.index(nick)]
-                    send_message(client, msg)
-        else:
-            client = self.clients[self.nicknames.index(msg["from"])]
-            send_message(client, get_404())
-
-    def room_msg(self, msg):
-        """Отправляем сообщение в конкретный чат"""
-        try:
-            to_name = msg["to"]
-        except:
-            to_name = msg["room"]
-            msg["message"] = f"{to_name} подключился к чату!"
-        finally:
-            if to_name == "#all":
-                self.broadband(msg)
+                client, addr = self.socket.accept()
+            except OSError:
+                pass
+            except Exception as ex:
+                self.logger.error(ex)
             else:
-                room = self.get_room(to_name)
-                client = self.clients[self.nicknames.index(msg["from"])]
-                if not room:
-                    room = self.get_new_room(to_name)
-                    room["clients"].append(client)
-                    room["nicknames"].append(msg["from"])
-                    send_message(client, get_404())
-                    sleep(0.5)
-                    send_message(client, get_201(to_name))
-                    sleep(0.5)
-                    send_message(client, get_102(f"Вы подключились к чату {to_name}"))
-                else:
-                    if not room["nicknames"].count(msg["from"]) == 0:
-                        for client in room["clients"]:
-                            # send_message(client, get_101(NICKNAMES[CLIENTS.index(client)]))
-                            send_message(
-                                client,
-                                action_msg(
-                                    f"<{msg['from']}>: {msg['message']}", self.nicknames[self.clients.index(client)]
-                                ),
-                            )
+                self.logger.info(f'Connection from {addr}')
+                self.clients.append(client)
+            i_clients, o_clients = [], []
+            try:
+                i_clients, o_clients, ex = select(self.clients, self.clients, [], self.TIMEOUT)
+            except OSError:
+                pass
+            except Exception as ex:
+                self.logger.error(ex)
+
+            requests = self.__get_requests(i_clients)
+            if requests:
+                self.__send_responses(requests, o_clients)
+
+    @try_except_wrapper
+    def __get_requests(self, i_clients):
+        requests = {}
+        for client in i_clients:
+            try:
+                request = get_data(client)
+                requests[client] = request
+
+                if request.action == RequestAction.PRESENCE:
+                    if request.body in self.users:
+                        requests.pop(client)
+                        send_data(client, Response(CONFLICT))
+                        self.clients.remove(client)
                     else:
-                        send_message(
-                            client,
-                            get_102(
-                                f"Вы не можете отправить сообщение в чат {msg['to']}\n"
-                                f"Сначала подключитесь к чату, потом сможете отправлять сообщение!"
-                            ),
-                        )
+                        self.users[request.body] = client
+                elif request.action == RequestAction.QUIT:
+                    self.__client_disconnect(client)
+            except (ConnectionError, ValueError):
+                self.__client_disconnect(client)
+            except Exception as e:
+                raise e
+        return requests
 
-    def broadband(self, msg):
-        """Флудилка, сообщения всем клиентам"""
-        for client in self.clients:
-            try:
-                send_message(client, action_msg(msg["message"], msg["to"]))
-            except:  # Сокет недоступен, клиент отключился
-                print(f"Client {client.fileno()} {client.getpeername()} DISCONNECTED")
-                client.close()
-                self.clients.remove(client)
+    @try_except_wrapper
+    def __send_responses(self, requests, o_clients):
 
-    def get_room(self, room_name):
-        """Возвращает требуемый чат или False"""
-        for room in self.rooms:
-            if room["room_name"] == room_name:
-                return room
-            else:
-                continue
-        return False
+        for client, i_req in requests.items():
+            other_clients = [c for c in o_clients if c != client]
+            self.logger.info(client)
+            self.logger.info(i_req)
 
-    def get_new_room(self, room_name):
-        """Создает и возвращает новый чат"""
-        room_new = {"room_name": room_name, "clients": [], "nicknames": []}
-        self.rooms.append(room_new)
-        return room_new
+            if i_req.action == RequestAction.PRESENCE:
+                self.__send_to_client(client, Response(OK))
+                self.__send_to_all(other_clients, Response(BASIC, f'{i_req.body} connected'))
 
-    def main(self):
-        """Основной скрипт работы сервера"""
-        sock = socket(AF_INET, SOCK_STREAM)
-        try:
-            if not 1024 <= self.port <= 65535:
-                raise ValueError
-        except ValueError:
-            logger.critical("The port must be in the range 1024-6535")
-            sys.exit(1)
-        else:
-            sock.bind((self.addr, self.port))
-            sock.listen(MAX_CONNECTIONS)
-            sock.settimeout(TIMEOUT)
-            logger.info(f"The server is RUNNING on the port: {self.port}")
-            print(f"The server is RUNNING on the port: {self.port}")
-        finally:
-            while True:
-                try:
-                    conn, addr = sock.accept()
-                except OSError as e:
-                    pass  # timeout вышел
+            elif i_req.action == RequestAction.QUIT:
+                self.__client_disconnect(client)
+
+            elif i_req.action == RequestAction.MESSAGE:
+                if not re.match(r'#', i_req.body['to']):
+                    msg = Msg.from_dict(i_req.body)
+                    if msg.to.upper() != 'ALL' and msg.to in self.users:
+                        self.__send_to_client(self.users[msg.to], Response(BASIC, str(msg)))
+                    else:
+                        self.__send_to_all(other_clients, Response(BASIC, str(msg)))
                 else:
-                    logger.info(f"Connected with {str(addr)}")
-                    send_message(conn, action_probe())
-                    cli_probe = get_message(conn)
-                    # TODO сделать проверку на сшществование такого ника
-                    nickname = cli_probe["user"]["account_name"]
-                    for room in self.rooms:
-                        # TODO проверить try-except если не будет room_name
-                        if not room["room_name"] == "#all":
-                            continue
-                        else:
-                            self.nicknames.append(nickname)
-                            self.clients.append(conn)
-                            logger.info(f"{nickname} joined!")
-                            print(f"{nickname} joined!")
-                            send_message(conn, get_101("Connected server!"))
-                            break
-                finally:
-                    r = []
-                    w = []
-                    try:
-                        r, w, e = select.select(self.clients, self.clients, [], WAIT)
-                    except:
-                        pass  # Ничего не делать, если какой-то клиент отключился
-                    requests = self.read_requests(r_clients=r)  # Сохраним запросы клиентов
-                    if requests:
-                        self.parsing_requests(requests)
+                    msg = MsgRoom.from_dict(i_req.body)
+                    if msg.to in self.rooms:
+                        room = self.rooms[msg.to]
+                        room_clients = [v for k, v in room.get_dict().items() if k != msg.sender]
+                        if len(room_clients):
+                            if msg.sender in room.get_dict():
+                                self.__send_to_all(room_clients, Response(BASIC, str(msg)))
+                            else:
+                                self.__send_to_client(self.users[msg.sender], Response(ACCESS))
+                    else:
+                        self.__send_to_client(self.users[msg.sender], Response(NOT_FOUND))
+                        subscribers = {}
+                        subscribers[msg.sender] = self.users[msg.sender]
+                        self.rooms[msg.to] = Room(msg.to, subscribers)
+                        sleep(0.5)
+                        self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Chat {msg.to} created!'))
+                        sleep(0.5)
+                        self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Now you can send a message to the chat {msg.to}'))
+                
+            elif i_req.action == RequestAction.JOIN:
+                user = [k for k, v in self.users.items() if v == client]
+                room = self.rooms[i_req.body]
+                room.get_dict()[user[0]] = client
+                room_clients = [v for k, v in room.get_dict().items() if k != user[0]]
+                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} JOINED to chat - {i_req.body}!'))
+
+            elif i_req.action == RequestAction.LEAVE:
+                user = [k for k, v in self.users.items() if v == client]
+                room = self.rooms[i_req.body]
+                room.get_dict().pop(user[0])
+                room_clients = room.get_dict().values()
+                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} LEFT chat!'))
+
+            elif i_req.action == RequestAction.COMMAND:
+                command, *args = i_req.body.split()
+                user = [u for u, c in self.users.items() if c == client].pop()
+                args.insert(0, user)
+                o_resp = self.__execute_command(command, *args)
+                self.__send_to_client(client, o_resp)
+            else:
+                self.__send_to_client(client, Response(INCORRECT_REQUEST))
+                self.logger.error(f'Incorrect request:\n {i_req}')
+
+    @try_except_wrapper
+    def __send_to_client(self, client, resp):
+        try:
+            send_data(client, resp)
+        except ConnectionError:
+            self.__client_disconnect(client)
+        except Exception as e:
+            raise e
+
+    def __send_to_all(self, clients, resp):
+        for cl in clients:
+            self.__send_to_client(cl, resp)
+
+    @try_except_wrapper
+    def __client_disconnect(self, client):
+        self.clients.remove(client)
+        disconnected_user = [u for u, c in self.users.items() if c == client].pop()
+        self.users.pop(disconnected_user)
+        disconnection_response = Response(BASIC, f'{disconnected_user} disconnected')
+        for cl in self.clients:
+            send_data(cl, disconnection_response)
+
+    def __execute_command(self, command, *args):
+        if command in self.commands:
+            answer = self.commands[command](*args)
+            if answer is False:
+                return Response(SERVER_ERROR, 'Command error')
+            elif isinstance(answer, list):
+                answer = [str(a) for a in answer]
+                return Response(ANSWER, answer)
+            elif answer is None:
+                return Response(ANSWER, 'Done')
+            return Response(ANSWER, answer)
+        else:
+            return Response(INCORRECT_REQUEST, 'Command not found')
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("-a", "--addr", type=str, default=DEFAULT_IP_ADDRESS)
+    parser.add_argument("-p", "--port", type=int, default=DEFAULT_PORT, nargs='?', help='Port [default=7777]')
+    parser.add_argument("-a", "--addr", type=str, default=DEFAULT_IP_ADDRESS, nargs='?', help='Bind address')
     return parser
 
 
 def run():
     args = parse_args()
     server = Server(args.addr, args.port)
-    server.main()
+    server.start()
 
 
 if __name__ == "__main__":
