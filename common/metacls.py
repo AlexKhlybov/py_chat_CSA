@@ -25,7 +25,6 @@ def disassemble(clsdict, black_list):
                     socket_step_to_call += 1
                 if i.argval in black_list:
                     raise TypeError('Call method of socket from black list')
-    pass
 
 
 class ClientVerifier(type):

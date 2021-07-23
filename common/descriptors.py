@@ -15,10 +15,8 @@ class Port:
 
     def __set__(self, instance, value):
         if not (1024 <= value <= 65535):
-            instance.logger.critical(
-                f'Попытка запуска с указанием неподходящего порта {value}.'
-                f' Допустимы адреса с 1024 до 65535.')
-            exit(1)
+            instance.logger.critical(f'Попытка запуска с указанием неподходящего порта {value}.')
+            raise ValueError(f'Ошибка пората. Порт: {value} недопустимый, введите порт в диапазоне с 1024 до 65535')
         setattr(instance, self.name, value)
         
 class Addr():
