@@ -23,10 +23,8 @@ def start():
 if __name__ == "__main__":
     ns = start()
     if ns.type == "server":
-        # server.main(what_run)
         server = Server(ns.addr, ns.port)
         server.main()
     elif ns.type == "client":
-        # client.main(ns)
         client = Client(ns.addr, ns.port, ns.name)
         client.main()
