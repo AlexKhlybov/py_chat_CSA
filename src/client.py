@@ -42,16 +42,15 @@ def print_help():
 
 
 class Client(metaclass=ClientVerifier):
-    __slots__ = ('_addr', '_port', 'logger', 'socket', 'connected', 'listener', 'sender')
+    __slots__ = ('_addr', '_port', 'logger', 'socket', 'connected', 'listener', 'sender', 'USER')
 
     TCP = (AF_INET, SOCK_STREAM)
-    USER = User(f'Test{random.randint(0, 1000)}')
     addr = Addr('_addr')
     port = Port('_port')
-  
 
     def __init__(self, addr, port):
         self.logger = logging.getLogger(log_config.LOGGER_NAME)
+        self.USER = User(input(f'Введите ваше имя: '))
         self.addr = addr
         self.port = port
         self.connected = False

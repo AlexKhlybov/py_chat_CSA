@@ -13,7 +13,7 @@ from common.codes import *
 from common.request_body import Msg, MsgRoom, Room
 from common.utils import *
 from common.metacls import ServerVerifier
-from database.server_db import ServerStorage
+from database.server_db import Rooms, ServerStorage
 
 
 class ServerThread(Thread):
@@ -46,6 +46,16 @@ class Server(metaclass=ServerVerifier):
         self.subscribers = {}
         self.rooms = {}
         self.storage = ServerStorage()
+        self.__init_commands()
+
+    def __init_commands(self):
+        self.commands = {
+            'get_users': self.storage.get_users_online,
+            'add_contact': self.storage.add_contact,
+            'rem_contact': self.storage.remove_contact,
+            'get_contacts': self.storage.get_contacts,
+            'get_room': self.storage.get_room
+        }
 
     def start(self, request_count=5):
         self.socket = socket(*self.TCP)
@@ -109,7 +119,7 @@ class Server(metaclass=ServerVerifier):
                         self.clients.remove(client)
                     else:
                         self.users[request.body] = client
-                        self.storage.login_user(request.body, client.getpeername()[0])
+                        self.storage.login_user(request.body, client.getpeername()[0], client.fileno())
                 elif request.action == RequestAction.QUIT:
                     self.__client_disconnect(client)
             except (ConnectionError, ValueError):
@@ -142,37 +152,77 @@ class Server(metaclass=ServerVerifier):
                         self.__send_to_all(other_clients, Response(BASIC, str(msg)))
                 else:
                     msg = MsgRoom.from_dict(i_req.body)
-                    if msg.to in self.rooms:
-                        room = self.rooms[msg.to]
-                        room_clients = [v for k, v in room.get_dict().items() if k != msg.sender]
-                        if len(room_clients):
-                            if msg.sender in room.get_dict():
-                                self.__send_to_all(room_clients, Response(BASIC, str(msg)))
-                            else:
-                                self.__send_to_client(self.users[msg.sender], Response(ACCESS))
+                    room = self.storage.get_room(msg.to[1:])
+
+                    if room:
+                        users_in_room = self.storage.get_user_in_rooms(room.id) # получаем всех юзеров в подкл. к чату
+                        list_fd = [user.fileno for user, room in users_in_room] # берем их fd
+                        if client.fileno() in list_fd: # если юзер входит то идем
+                            sock_client = []
+                            for fd in list_fd:
+                                for sock in o_clients:
+                                    if sock.fileno() == fd:
+                                        sock_client.append(sock)
+                            self.__send_to_all(sock_client, Response(BASIC, str(msg)))
+                        else:
+                            self.__send_to_client(self.users[msg.sender], Response(ACCESS))                        
                     else:
-                        self.__send_to_client(self.users[msg.sender], Response(NOT_FOUND))
-                        subscribers = {}
-                        subscribers[msg.sender] = self.users[msg.sender]
-                        self.rooms[msg.to] = Room(msg.to, subscribers)
+                        self.__send_to_client(client, Response(NOT_FOUND))
+                        room = self.storage.create_room(msg.to[1:])
+                        user = self.storage.get_user_by_name(msg.sender)
+                        self.storage.join_user_to_room(room.id, user.id)
                         sleep(0.5)
-                        self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Chat {msg.to} created!'))
+                        self.__send_to_client(client, Response(BASIC, f'Chat {msg.to} created!'))
                         sleep(0.5)
-                        self.__send_to_client(self.users[msg.sender], Response(BASIC, f'Now you can send a message to the chat {msg.to}'))
+                        self.__send_to_client(client, Response(BASIC, f'Now you can send a message to the chat {msg.to}'))
                 
             elif i_req.action == RequestAction.JOIN:
-                user = [k for k, v in self.users.items() if v == client]
-                room = self.rooms[i_req.body]
-                room.get_dict()[user[0]] = client
-                room_clients = [v for k, v in room.get_dict().items() if k != user[0]]
-                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} JOINED to chat - {i_req.body}!'))
+                room = self.storage.get_room(i_req.body[1:])
+                if room:
+                    user_online = self.storage.get_user_online(client.fileno())
+                    user = self.storage.get_user_by_id(user_online.user_id)
+
+                    #Проверяем, может юзер в группе?
+                    list_users_room = self.storage.get_user_in_rooms(room.id)
+                    list_users_id = [user.user_id for user, room in list_users_room]
+
+                    if user_online.user_id not in list_users_id:
+                        self.storage.join_user_to_room(room.id, user_online.user_id)
+                        list_fd = [user.fileno for user, room in list_users_room] # берем их fd
+                        ic(list_fd)
+                        if client.fileno() in list_fd: # если юзер входит то идем
+                            sock_client = []
+                            for fd in list_fd:
+                                for sock in o_clients:
+                                    if sock.fileno() == fd:
+                                        if sock not in sock_client:
+                                            sock_client.append(sock)
+                            self.__send_to_all(sock_client, Response(BASIC, f'{user.name} JOINED to chat - {i_req.body}!'))
+                    else:
+                        self.__send_to_client(client, Response(NOT_FOUND, f'A user named {user.name} is already connected to the chat!'))
 
             elif i_req.action == RequestAction.LEAVE:
-                user = [k for k, v in self.users.items() if v == client]
-                room = self.rooms[i_req.body]
-                room.get_dict().pop(user[0])
-                room_clients = room.get_dict().values()
-                self.__send_to_all(room_clients, Response(BASIC, f'{user[0]} LEFT chat!'))
+                user_online = self.storage.get_user_online(client.fileno())
+
+                room = self.storage.get_room(i_req.body[1:])
+                user = self.storage.get_user_by_id(user_online.user_id)
+
+                #Проверяем юзер в группе?
+                list_users_room = self.storage.get_user_in_rooms(room.id)
+                list_users_id = [user.user_id for user, room in list_users_room]
+
+                if user_online.user_id in list_users_id:
+                    self.storage.remove_user_to_room(room.id, user.id)
+                    list_fd = [user.fileno for user, room in list_users_room] # берем их fd
+                    sock_client = []
+                    for fd in list_fd:
+                        for sock in o_clients:
+                            if sock.fileno() == fd:
+                                if sock not in sock_client:
+                                    sock_client.append(sock)
+                    self.__send_to_all(sock_client, Response(BASIC, f'{user[0]} LEFT chat!'))
+                else:
+                    self.__send_to_client(client, Response(NOT_FOUND, f'A user named {user.name} is not connected to the chat!'))
 
             elif i_req.action == RequestAction.COMMAND:
                 command, *args = i_req.body.split()
@@ -210,6 +260,7 @@ class Server(metaclass=ServerVerifier):
     def __execute_command(self, command, *args):
         if command in self.commands:
             answer = self.commands[command](*args)
+            ic(answer)
             if answer is False:
                 return Response(SERVER_ERROR, 'Command error')
             elif isinstance(answer, list):

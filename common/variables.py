@@ -1,4 +1,5 @@
 import os
+from types import ClassMethodDescriptorType
 
 # Порт по умолчанию
 DEFAULT_PORT = 7777
@@ -45,3 +46,4 @@ class RequestAction:
     JOIN = 'join'
     LEAVE = 'leave'
     COMMAND = 'command'
+
